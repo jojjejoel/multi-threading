@@ -9,145 +9,127 @@
 #include <chrono>
 #include "Sphere.h"
 #include "position-filtering-multi-thread.h"
+#include "ThreadPool.h"
 
-int main()
-{
-	std::vector<Vector3> positions;
+std::mutex mtx;
 
-	for (size_t i = 0; i < 1000000; i++)
-	{
-		ReadPositionsData("positionsData.txt", positions);
-	}
+bool RunApplication(std::vector<Vector3>& positions, Sphere& sphere, ThreadPool& pool);
+void NonThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions);
+void ThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions, ThreadPool& pool);
+void workerThreadTask(const std::vector<Vector3>& positions, const Sphere& sphere, std::vector<Vector3>& localOverlappingPositions, size_t start, size_t end);
+void IsPositionOverlappingSphere(const Vector3& position, const Sphere& sphere, std::vector<Vector3>& overlappingPositions);
+void ReadPositionsData(const char* fileName, std::vector<Vector3>& positions);
 
-	Sphere sphere{ 5, 5, 5, 10 };
-	bool isRunning = true;
+int main() {
+    std::vector<Vector3> positions;
+    for (size_t i = 0; i < 100; i++) {
+        ReadPositionsData("positionsData.txt", positions);
+    }
 
-	while (isRunning)
-	{
-		isRunning = RunApplication(positions, sphere);
-	}
-	return 0;
+    Sphere sphere{ 5, 5, 5, 10 };
+    bool isRunning = true;
+    ThreadPool pool(12);  // Initialize thread pool with 20 threads
+
+    while (isRunning) {
+        isRunning = RunApplication(positions, sphere, pool);
+    }
+    pool.stop();
+    return 0;
 }
 
-bool RunApplication(std::vector<Vector3>& positions, Sphere& sphere)
-{
+bool RunApplication(std::vector<Vector3>& positions, Sphere& sphere, ThreadPool& pool) {
+    std::cout << "1 = Non-Threaded " << std::endl;
+    std::cout << "2 = Threaded " << std::endl;
+    std::cout << "3 = EXIT " << std::endl;
+    char inputChar;
+    std::cin >> inputChar;
+    if (inputChar == '3') {
+        return false;
+    }
 
-	std::cout << "1 = Non-Threaded " << std::endl;
-	std::cout << "2 = Threaded " << std::endl;
-	std::cout << "3 = EXIT " << std::endl;
-	char inputChar;
-	std::cin >> inputChar;
-	if (inputChar == '3')
-	{
-		return false;
-	}
+    std::vector<Vector3> overlappingPositions;
+    auto start = std::chrono::high_resolution_clock::now();
 
-	std::vector<Vector3> overlappingPositions;
-	auto start = std::chrono::high_resolution_clock::now();
+    if (inputChar == '1') {
+        NonThreadedCalculation(positions, sphere, overlappingPositions);
+    }
+    else if (inputChar == '2') {
+        ThreadedCalculation(positions, sphere, overlappingPositions, pool);
+    }
 
-	if (inputChar == '1')
-	{
-		NonThreadedCalculation(positions, sphere, overlappingPositions);
-	}
-	else if (inputChar == '2')
-	{
-		ThreadedCalculation(positions, sphere, overlappingPositions);
-	}
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end - start;
 
+    std::cout << "Calculation time: " << elapsed.count() << " ms" << std::endl;
+    std::cout << "Number of overlapping positions: " << overlappingPositions.size() << std::endl;
 
-	auto end = std::chrono::high_resolution_clock::now();
-
-	std::chrono::duration<double, std::milli> elapsed = end - start;
-
-
-	std::cout << "Calculation time: " << elapsed << std::endl;
-
-	std::cout << "Number of overlapping positions: " << overlappingPositions.size() << std::endl;
-
-	return true;
+    return true;
 }
 
-void NonThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions)
-{
-	for (auto& position : positions) {
-		IsPostionOverLappingSphere(position, sphere, overlappingPositions);
-	}
+void NonThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions) {
+    for (auto& position : positions) {
+        IsPositionOverlappingSphere(position, sphere, overlappingPositions);
+    }
 }
 
-void ThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions)
-{
-	size_t numThreads = 12;
-	size_t chunkSize = positions.size() / numThreads;
-	std::vector<std::thread> threads;
+void ThreadedCalculation(std::vector<Vector3>& positions, Sphere& sphere, std::vector<Vector3>& overlappingPositions, ThreadPool& pool) {
+    size_t numThreads = 20;
+    size_t chunkSize = positions.size() / numThreads;
+    std::vector<std::vector<Vector3>> localOverlappingPositions(numThreads);
 
+    std::atomic<size_t> remainingTasks(numThreads);
 
-	auto startTime = std::chrono::high_resolution_clock::now();
-	for (size_t i = 0; i < numThreads; ++i) {
-		size_t start = i * chunkSize;
-		size_t end = (i == numThreads - 1) ? positions.size() : (i + 1) * chunkSize;
-		threads.emplace_back(workerThread, std::ref(positions), std::ref(sphere), std::ref(overlappingPositions), start, end);
-	}
+    for (size_t i = 0; i < numThreads; ++i) {
+        size_t start = i * chunkSize;
+        size_t end = (i == numThreads - 1) ? positions.size() : (i + 1) * chunkSize;
+        pool.enqueueTask([&, start, end, i] {
+            workerThreadTask(positions, sphere, localOverlappingPositions[i], start, end);
+            remainingTasks--;
+            });
+    }
 
-	auto endTime = std::chrono::high_resolution_clock::now();
+    // Busy wait for all tasks to complete
+    while (remainingTasks > 0) {}
 
-	std::chrono::duration<double, std::milli> elapsed = endTime - startTime;
-
-
-	std::cout << "Creating threads time: " << elapsed << std::endl;
-
-	for (auto& thread : threads) {
-		if (thread.joinable()) {
-			thread.join();
-		}
-	}
+    // Gather results from all threads
+    for (const auto& localList : localOverlappingPositions) {
+        std::lock_guard<std::mutex> lock(mtx);
+        overlappingPositions.insert(overlappingPositions.end(), localList.begin(), localList.end());
+    }
 }
 
-
-
-void workerThread(const std::vector<Vector3>& positions, const Sphere& sphere, std::vector<Vector3>& overlappingPositions, size_t start, size_t end) {
-
-	for (size_t i = start; i < end; ++i) {
-		IsPostionOverLappingSphere(positions[i], sphere, overlappingPositions);
-	}
-
+void workerThreadTask(const std::vector<Vector3>& positions, const Sphere& sphere, std::vector<Vector3>& localOverlappingPositions, size_t start, size_t end) {
+    for (size_t i = start; i < end; ++i) {
+        if (positions[i].squaredDistanceTo(sphere.pos) <= std::pow(sphere.radius, 2)) {
+            localOverlappingPositions.push_back(positions[i]);
+        }
+    }
 }
 
-void IsPostionOverLappingSphere(const Vector3& position, const Sphere& sphere, std::vector<Vector3>& overlappingPositions)
-{
-	if (position.squaredDistanceTo(sphere.pos) <= pow(sphere.radius, 2))
-	{
-		bool mutexIsOccupied = !vectorAddMutex.try_lock();
-		while (mutexIsOccupied)
-		{
-			mutexIsOccupied = !vectorAddMutex.try_lock();
-		}
-		overlappingPositions.push_back(position);
-		vectorAddMutex.unlock();
-	}
+void IsPositionOverlappingSphere(const Vector3& position, const Sphere& sphere, std::vector<Vector3>& overlappingPositions) {
+    if (position.squaredDistanceTo(sphere.pos) <= pow(sphere.radius, 2)) {
+        std::lock_guard<std::mutex> lock(mtx);
+        overlappingPositions.push_back(position);
+    }
 }
 
-void ReadPositionsData(const char* fileName, std::vector<Vector3>& positions)
-{
-	std::ifstream file(fileName);
+void ReadPositionsData(const char* fileName, std::vector<Vector3>& positions) {
+    std::ifstream file(fileName);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << fileName << std::endl;
+        return;
+    }
 
-	if (!file.is_open()) {
-		std::cerr << "Error opening file: " << fileName << std::endl;
-	}
-
-	std::string line;
-	while (std::getline(file, line)) {
-		std::istringstream iss(line);
-		char dummy;
-		Vector3 position;
-
-		if (!(iss >> dummy >> position.x >> dummy >> position.y >> dummy >> position.z >> dummy)) {
-			std::cerr << "Error parsing line: " << line << std::endl;
-			continue;
-		}
-
-		positions.push_back(position);
-	}
-
-	file.close();
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        char dummy;
+        Vector3 position;
+        if (!(iss >> dummy >> position.x >> dummy >> position.y >> dummy >> position.z >> dummy)) {
+            std::cerr << "Error parsing line: " << line << std::endl;
+            continue;
+        }
+        positions.push_back(position);
+    }
+    file.close();
 }
-
