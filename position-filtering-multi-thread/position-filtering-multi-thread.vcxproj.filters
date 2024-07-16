@@ -21,6 +21,9 @@
     <ClCompile Include="ThreadPool.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="PositionFilterer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Vector3.h">
@@ -29,10 +32,10 @@
     <ClInclude Include="Sphere.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="position-filtering-multi-thread.h">
+    <ClInclude Include="ThreadPool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ThreadPool.h">
+    <ClInclude Include="PositionFilterer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

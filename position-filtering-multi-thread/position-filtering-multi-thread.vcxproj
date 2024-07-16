@@ -132,10 +132,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="position-filtering-multi-thread.cpp" />
+    <ClCompile Include="PositionFilterer.cpp" />
     <ClCompile Include="ThreadPool.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="position-filtering-multi-thread.h" />
+    <ClInclude Include="PositionFilterer.h" />
     <ClInclude Include="Sphere.h" />
     <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="Vector3.h" />

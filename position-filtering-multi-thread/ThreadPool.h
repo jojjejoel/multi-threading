@@ -17,6 +17,9 @@ public:
     void start();
     void stop();
 
+public:
+    const size_t GetNumberOfThreads() const { return workers.size(); }
+
 private:
     std::vector<std::thread> workers;
     std::queue<std::function<void()>> tasks;
