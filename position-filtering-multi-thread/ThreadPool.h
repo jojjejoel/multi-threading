@@ -10,23 +10,26 @@
 
 class ThreadPool {
 public:
-    ThreadPool(size_t numThreads);
+    ThreadPool();
     ~ThreadPool();
+    void Init(size_t numThreads);
 
-    void enqueueTask(const std::function<void()>& task);
-    void start();
-    void stop();
+    void EnqueueTask(const std::function<void()>& task);
+    void Start();
+    void Stop();
 
 public:
-    const size_t GetNumberOfThreads() const { return workers.size(); }
+    const size_t GetNumThreads() const { return workerThreads.size(); }
+
 
 private:
-    std::vector<std::thread> workers;
+    void WorkerThread();
+
+private:
+    std::vector<std::jthread> workerThreads;
     std::queue<std::function<void()>> tasks;
 
     std::mutex queueMutex;
     std::condition_variable condition;
     std::atomic<bool> stopFlag;
-
-    void workerThread();
 };

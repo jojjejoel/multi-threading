@@ -1,22 +1,21 @@
 #include "ThreadPool.h"
 
-ThreadPool::ThreadPool(size_t numThreads)
+ThreadPool::ThreadPool()
 	: stopFlag(false) {
-	for (size_t i = 0; i < numThreads; ++i) {
-		workers.emplace_back(&ThreadPool::workerThread, this);
-	}
 }
 
 ThreadPool::~ThreadPool() {
-	stop();
-	for (std::thread& worker : workers) {
-		if (worker.joinable()) {
-			worker.join();
-		}
+	Stop();
+}
+
+void ThreadPool::Init(size_t numThreads)
+{
+	for (size_t i = 0; i < numThreads; ++i) {
+		workerThreads.emplace_back(&ThreadPool::WorkerThread, this);
 	}
 }
 
-void ThreadPool::enqueueTask(const std::function<void()>& task) {
+void ThreadPool::EnqueueTask(const std::function<void()>& task) {
 	{
 		std::unique_lock<std::mutex> lock(queueMutex);
 		tasks.push(task);
@@ -24,16 +23,16 @@ void ThreadPool::enqueueTask(const std::function<void()>& task) {
 	condition.notify_one();
 }
 
-void ThreadPool::start() {
+void ThreadPool::Start() {
 	stopFlag.store(false);
 }
 
-void ThreadPool::stop() {
+void ThreadPool::Stop() {
 	stopFlag.store(true);
 	condition.notify_all();
 }
 
-void ThreadPool::workerThread() {
+void ThreadPool::WorkerThread() {
 	while (true) {
 		std::function<void()> task;
 		{
